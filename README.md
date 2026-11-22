@@ -5,16 +5,15 @@ This project demonstrates an end-to-end local Security Operations Center (SOC) l
 
 The environment consists of a containerized Wazuh SIEM server monitoring an isolated Windows 10 endpoint enhanced with Sysmon, simulating real-world techniques mapped to the **MITRE ATT&CK** framework.
 
----
 
 ## 2. Architecture & Tech Stack
 
 ### Infrastructure Topology
 * **Network Bridge:** Isolated NAT virtual network (`virbr0` - `192.168.122.0/24`)
 * **SIEM Server (Host):** `192.168.122.1` (ports `1514/tcp` for agent log ingestion, `1515/tcp` for enrollment, `443/tcp` for Wazuh Dashboard
-* **Monitored Endpoint (VM):** `Win10-Target` (`192.168.122.x`)
+* **Monitored Endpoint (VM):** `Win10-Target` (`192.168.122.50`)
 
-  *pic*
+<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/3d2342d7-4579-4aa9-b2b3-6284a3e38232" />
 
 
 ### Tech Stack
@@ -25,8 +24,6 @@ The environment consists of a containerized Wazuh SIEM server monitoring an isol
 * **Endpoint Telemetry:** Microsoft Sysmon v15.22 (configured with `SwiftOnSecurity/sysmon-config`), Windows Security Event Logs
 * **Attack Simulation Tools:** Nmap, THC-Hydra, native Windows LOLBins (`powershell.exe`, `certutil.exe`, `reg.exe`)
 
-
----
 
 
 ## 3. Lab Deployment & Telemetry Setup
@@ -56,8 +53,6 @@ The Wazuh Agent was registered with the manager at 192.168.122.1 and configured 
 
 <img width="3058" height="1118" alt="image" src="https://github.com/user-attachments/assets/5a3f2f4f-9458-4f0a-857e-bb03ccdcb145" />
 
-
----
 
 
 ## 4. Detection Engineering (Custom Rules)
@@ -94,8 +89,6 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 ### Verification
 
 <img width="2398" height="1332" alt="image" src="https://github.com/user-attachments/assets/ffb2217d-ff52-4984-a274-ea18bb0dabaa" />
-
----
 
 
 ## 5. Attack Scenarios & Incident Reports
