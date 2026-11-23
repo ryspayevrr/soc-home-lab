@@ -22,7 +22,7 @@ The environment consists of a containerized Wazuh SIEM server monitoring an isol
 * **SIEM / XDR:** Wazuh v4.14.10 (Manager, Indexer, Dashboard)
 * **Monitored Endpoint:** Windows 10 Pro (VirtIO storage & drivers, 2 vCPU, 4 GB RAM)
 * **Endpoint Telemetry:** Microsoft Sysmon v15.22 (configured with `SwiftOnSecurity/sysmon-config`), Windows Security Event Logs
-* **Attack Simulation Tools:** Nmap, THC-Hydra, native Windows LOLBins (`powershell.exe`, `certutil.exe`, `reg.exe`)
+* **Attack Simulation Tools:** Nmap, smbclient, native Windows LOLBins (`powershell.exe`, `certutil.exe`, `reg.exe`)
 
 
 
@@ -97,7 +97,7 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 | # | Scenario | MITRE ATT&CK Technique | Detection Source | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Obfuscated PowerShell & LOLBin Execution | `T1059.001`, `T1105` | Sysmon (`Event ID 1`) + Custom Rules | Completed |
-| 2 | Network Reconnaissance & RDP/SMB Brute Force | `T1046`, `T1110` | Windows Security Log (`4625`) | Planned |
+| 2 | Network Reconnaissance & SMB Brute Force | `T1046`, `T1110` | Windows Security Log (`4625`) | Completed |
 | 3 | Registry Run Key Persistence | `T1547.001` | Sysmon (`Event ID 13`) | Planned |
 
 
@@ -125,3 +125,29 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 - **Why Sysmon is Essential:** Standard Windows Security logs record *which* program started, but usually miss *how* it was launched. Sysmon (`Event ID 1`) fills this gap by logging full command-line arguments (such as `-EncodedCommand` or `-urlcache`), file hashes, and parent-child process relationships, making triage much faster.
 - **How Wazuh Rule Inheritance Works:** Wazuh evaluates rules in a tree structure from general to specific. When a more specific built-in rule matches an event first (for example, rule `92057` for PowerShell spawning another encoded PowerShell), generic parent rules (`61603`) are bypassed. To catch both direct and nested executions, custom rules must inherit from both parent IDs (`<if_sid>61603,92057</if_sid>`).
 - **Handling False Positives (Alert Triage):** During testing, PowerShell's normal background policy checks (`__PSScriptPolicyTest_*.ps1` created in `AppData\Local\Temp`) triggered built-in high-severity alerts (rule `92213`, Level 15). Investigating these events showed how legitimate OS behavior can create alert noise and why baseline tuning is critical in a real SOC.
+
+
+### Incident Report #02: Network Reconnaissance & SMB Brute Force (`T1046`, `T1110`)
+
+- **Source / Attacker Host:** Arch Linux (`GOSENS` / `192.168.122.1`)
+- **Target Host:** `Win10-Target` (`192.168.122.50`)
+- **Triggered Rules:**
+  - `60122` (Level 5) - *Logon Failure - Unknown user or bad password* (`Event ID 4625`)
+  - `60204` (Level 10) - *Multiple Windows Logon Failures* (`T1110`)
+  - `60115` (Level 9) - *User account locked out (multiple login errors)* (`Event ID 4740`, `T1110`, `T1531`)
+- **Attack Simulation:**
+  1. Conducted TCP SYN and service version port scan against `192.168.122.50` using `nmap -sS -sV -p 135,139,445,3389`, identifying open SMB (`445/tcp`) and RPC (`135/tcp`, `139/tcp`) services (`T1046`).
+ 
+    <img width="1734" height="712" alt="image" src="https://github.com/user-attachments/assets/df8c1177-731c-4e56-ae99-b2dadd4bc129" />
+
+  2. Executed an automated SMBv3 credential brute-force loop via `smbclient` targeting `admin` account with a 15-password wordlist (`T1110`).
+    
+    <img width="1024" height="532" alt="image" src="https://github.com/user-attachments/assets/6571bbf7-3ec9-42e6-ae54-bb2a7a385c3b" />
+
+- **Telemetry & Forensic Artifacts (Windows Security Logs):**
+  - The first 10 attempts generated `Event ID 4625` (`NT_STATUS_LOGON_FAILURE`), triggering individual failure alerts (`60122`) and Wazuh's correlation rule (`60204`).
+  - Attempt #11 triggered Windows' built-in Account Lockout Policy (`NT_STATUS_ACCOUNT_LOCKED_OUT`), generating `Event ID 4740` (`rule.id: 60115`) and recording the attacking workstation hostname (`GOSENS`) in the `TargetDomainName` field. <img width="2402" height="1350" alt="image" src="https://github.com/user-attachments/assets/3adaeeb1-8a1c-4f8e-a470-1eb5ad74b5c2" />
+- **Triage & Containment Actions:**
+  1. Verified alert correlation (`60204`) and confirmed account lockout (`60115`) for the `admin` account in Wazuh Discover.
+  2. Disabled the `File and Printer Sharing` inbound firewall rule group on `Win10-Target` to close port `445/tcp` from network exposure and removed the temporary password wordlist from the attacker host.
+  3. Recommended restricting SMB access via host firewall rules, enforcing strong password complexity, and maintaining strict Account Lockout thresholds.
