@@ -13,7 +13,7 @@ The environment consists of a containerized Wazuh SIEM server monitoring an isol
 * **SIEM Server (Host):** `192.168.122.1` (ports `1514/tcp` for agent log ingestion, `1515/tcp` for enrollment, `443/tcp` for Wazuh Dashboard
 * **Monitored Endpoint (VM):** `Win10-Target` (`192.168.122.50`)
 
-<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/3d2342d7-4579-4aa9-b2b3-6284a3e38232" />
+<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/86940a96-b7dc-49b4-8640-0556ba649230" />
 
 
 ### Tech Stack
@@ -97,7 +97,7 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 | # | Scenario | MITRE ATT&CK Technique | Detection Source | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Obfuscated PowerShell & LOLBin Execution | `T1059.001`, `T1105` | Sysmon (`Event ID 1`) + Custom Rules | Completed |
-| 2 | Network Reconnaissance & SMB Brute Force | `T1046`, `T1110` | Windows Security Log (`4625`) | Completed |
+| 2 | Network Reconnaissance & SMB Brute Force | `T1046`, `T1110` | Windows Security Log (`4625`, `4740`) | Completed |
 | 3 | Registry Run Key Persistence | `T1547.001` | Sysmon (`Event ID 13`) | Completed |
 
 
@@ -120,11 +120,6 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 #### Evidence (Wazuh Telemetry)
 
 <img width="2434" height="1014" alt="image" src="https://github.com/user-attachments/assets/37d25362-27f4-4eb4-bd72-0b863d778e7e" />
-
-#### Key Takeaways & Lessons Learned
-- **Why Sysmon is Essential:** Standard Windows Security logs record *which* program started, but usually miss *how* it was launched. Sysmon (`Event ID 1`) fills this gap by logging full command-line arguments (such as `-EncodedCommand` or `-urlcache`), file hashes, and parent-child process relationships, making triage much faster.
-- **How Wazuh Rule Inheritance Works:** Wazuh evaluates rules in a tree structure from general to specific. When a more specific built-in rule matches an event first (for example, rule `92057` for PowerShell spawning another encoded PowerShell), generic parent rules (`61603`) are bypassed. To catch both direct and nested executions, custom rules must inherit from both parent IDs (`<if_sid>61603,92057</if_sid>`).
-- **Handling False Positives (Alert Triage):** During testing, PowerShell's normal background policy checks (`__PSScriptPolicyTest_*.ps1` created in `AppData\Local\Temp`) triggered built-in high-severity alerts (rule `92213`, Level 15). Investigating these events showed how legitimate OS behavior can create alert noise and why baseline tuning is critical in a real SOC.
 
 
 ### Incident Report #02: Network Reconnaissance & SMB Brute Force (`T1046`, `T1110`)
@@ -170,3 +165,10 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
   1. Verified alert `92302` in Wazuh Discover and confirmed unauthorized modification of the `CurrentVersion\Run` autostart key.
   2. Removed the rogue `WindowsSecurityUpdate` value from the registry via `reg delete` and verified cleanup with `reg query`.
   3. Recommended restricting unauthorized `reg.exe` executions for standard users via AppLocker / WDAC policies and maintaining continuous Sysmon monitoring on `Run` / `RunOnce` registry hives.
+
+## 6. Key Takeaways & Lessons Learned
+
+- **Why Sysmon is Essential:** Standard Windows Security logs record *which* program started, but usually miss *how* it was launched and do not monitor Registry Run keys by default. Sysmon (`Event ID 1` and `Event ID 13`) fills these gaps by logging full command-line arguments (`-EncodedCommand`, `-urlcache`), parent-child process trees, and exact registry value modifications (`HKU\...\CurrentVersion\Run`), making triage much faster.
+- **How Wazuh Rule Inheritance Works:** Wazuh evaluates rules in a tree structure from general to specific. When a more specific built-in rule matches an event first (for example, rule `92057` for PowerShell spawning another encoded PowerShell), generic parent rules (`61603`) are bypassed. To catch both direct and nested executions, custom rules must inherit from both parent IDs (`<if_sid>61603,92057</if_sid>`).
+- **Account Lockout & Host Attribution in Network Attacks:** Correlating `Event ID 4625` (failed SMB logons, `rule.id: 60204`) with `Event ID 4740` (account lockout, `rule.id: 60115`) demonstrated both automated OS-level defense in action and forensic attribution — Windows recorded the attacking workstation's NetBIOS hostname (`GOSENS`) inside the `TargetDomainName` field even without an explicit source IP in the NTLMv2 event.
+- **Handling False Positives (Alert Triage):** During testing, PowerShell's normal background policy checks (`__PSScriptPolicyTest_*.ps1` created in `AppData\Local\Temp`) triggered built-in high-severity alerts (`rule.id: 92213`, Level 15). Investigating these events showed how legitimate OS behavior can create alert noise and why baseline tuning is critical in a real SOC.
