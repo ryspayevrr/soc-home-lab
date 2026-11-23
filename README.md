@@ -98,7 +98,7 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
 | :--- | :--- | :--- | :--- | :--- |
 | 1 | Obfuscated PowerShell & LOLBin Execution | `T1059.001`, `T1105` | Sysmon (`Event ID 1`) + Custom Rules | Completed |
 | 2 | Network Reconnaissance & SMB Brute Force | `T1046`, `T1110` | Windows Security Log (`4625`) | Completed |
-| 3 | Registry Run Key Persistence | `T1547.001` | Sysmon (`Event ID 13`) | Planned |
+| 3 | Registry Run Key Persistence | `T1547.001` | Sysmon (`Event ID 13`) | Completed |
 
 
 ### Incident Report #01: Obfuscated PowerShell & LOLBin Execution (T1059.001, T1105)
@@ -151,3 +151,22 @@ To detect living-off-the-land binaries (LOLBins) and obfuscated execution chains
   1. Verified alert correlation (`60204`) and confirmed account lockout (`60115`) for the `admin` account in Wazuh Discover.
   2. Disabled the `File and Printer Sharing` inbound firewall rule group on `Win10-Target` to close port `445/tcp` from network exposure and removed the temporary password wordlist from the attacker host.
   3. Recommended restricting SMB access via host firewall rules, enforcing strong password complexity, and maintaining strict Account Lockout thresholds.
+
+### Incident Report #03: Persistence via Registry Run Keys (`T1547.001`)
+- **Target Host:** `Win10-Target` (`192.168.122.50`)
+- **Triggered Rule:** `92302` (Level 10) — *Registry entry to be executed on next logon was modified using command line application reg.exe* (`T1547.001`)
+- **Attack Simulation:**
+  1. Added a malicious persistence entry (`WindowsSecurityUpdate`) pointing to `C:\Windows\System32\calc.exe` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` via `reg.exe` to achieve execution upon user logon (`T1547.001`).
+  2. Verified successful registry modification using `reg query`.
+
+     <img width="1742" height="1306" alt="image" src="https://github.com/user-attachments/assets/76b2af4b-e2bf-478b-8ae8-ae2f57a3e078" />
+
+- **Telemetry & Forensic Artifacts (Sysmon Event ID 13):**
+  - Sysmon captured the registry value modification (`Event ID 13`), recording the initiating binary (`C:\Windows\system32\reg.exe`), the full user hive path (`HKU\S-1-5-21-357749033-4230364695-543291694-1001\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\WindowsSecurityUpdate`), and the payload path (`C:\Windows\System32\calc.exe`).
+
+    <img width="2414" height="988" alt="image" src="https://github.com/user-attachments/assets/5c17c207-f77b-497b-ac3e-9b165700841a" />
+
+- **Triage & Eradication Actions:**
+  1. Verified alert `92302` in Wazuh Discover and confirmed unauthorized modification of the `CurrentVersion\Run` autostart key.
+  2. Removed the rogue `WindowsSecurityUpdate` value from the registry via `reg delete` and verified cleanup with `reg query`.
+  3. Recommended restricting unauthorized `reg.exe` executions for standard users via AppLocker / WDAC policies and maintaining continuous Sysmon monitoring on `Run` / `RunOnce` registry hives.
